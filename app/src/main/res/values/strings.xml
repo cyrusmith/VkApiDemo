@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">VkApiDemo</string>
+    <string name="title_login">Войти</string>
+</resources>
