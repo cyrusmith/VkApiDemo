@@ -5,8 +5,10 @@ import android.content.AsyncTaskLoader;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 
 import com.vk.sdk.VKAccessToken;
@@ -15,11 +17,19 @@ import com.vk.sdk.VKSdk;
 import com.vk.sdk.VKSdkListener;
 import com.vk.sdk.VKUIHelper;
 import com.vk.sdk.api.VKApi;
+import com.vk.sdk.api.VKApiConst;
 import com.vk.sdk.api.VKError;
+import com.vk.sdk.api.VKParameters;
 import com.vk.sdk.api.VKRequest;
 import com.vk.sdk.api.VKResponse;
 import com.vk.sdk.api.model.VKApiUser;
+import com.vk.sdk.api.model.VKApiUserFull;
+import com.vk.sdk.api.model.VKUsersArray;
 
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -34,95 +44,29 @@ public class MainActivity extends ListActivity {
 
     private static final String VK_APP_ID = "4520250";
 
-    private class FriendsLoader extends AsyncTaskLoader<List<VKApiUser>> {
-
-        private VKRequest request = null;
-
-        public FriendsLoader(Context context) {
-            super(context);
-        }
-
-        @Override
-        public boolean cancelLoad() {
-
-            if (request != null) {
-                synchronized (this) {
-                    if (request != null) {
-                        request.cancel();
-                    }
-                }
-            }
-
-            return super.cancelLoad();
-        }
-
-        @Override
-        public List<VKApiUser> loadInBackground() {
-
-            if (request != null) {
-                request.cancel();
-            }
-
-            synchronized (this) {
-                request = VKApi.users().get();
-            }
-
-            final CountDownLatch latch = new CountDownLatch(1);
-
-            final List<VKApiUser> users = new CopyOnWriteArrayList<VKApiUser>();
-
-            request.executeWithListener(new VKRequest.VKRequestListener() {
-                @Override
-                public void onComplete(VKResponse response) {
-                    latch.countDown();
-                }
-
-                @Override
-                public void attemptFailed(VKRequest request, int attemptNumber, int totalAttempts) {
-                    //TODO fil the array
-                    latch.countDown();
-                }
-
-                @Override
-                public void onError(VKError error) {
-                    latch.countDown();
-                }
-
-                @Override
-                public void onProgress(VKRequest.VKProgressType progressType, long bytesLoaded, long bytesTotal) {
-                    //TODO
-                }
-
-            });
-
-            try {
-                latch.await();
-                return users;
-            } catch (InterruptedException e) {
-                return null;
-            }
-
-        }
-
-    }
-
-    ;
+    private boolean isLoggedIn = false;
 
     private final VKSdkListener sdkListener = new VKSdkListener() {
 
         @Override
         public void onAcceptUserToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onAcceptUserToken " + token);
+            isLoggedIn = true;
+            startLoading();
         }
 
         @Override
         public void onReceiveNewToken(VKAccessToken newToken) {
             Log.d("VkDemoApp", "onReceiveNewToken " + newToken);
+            isLoggedIn = true;
+            startLoading();
         }
 
         @Override
         public void onRenewAccessToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onRenewAccessToken " + token);
+            isLoggedIn = true;
+            startLoading();
         }
 
         @Override
@@ -133,14 +77,21 @@ public class MainActivity extends ListActivity {
         @Override
         public void onTokenExpired(VKAccessToken expiredToken) {
             Log.d("VkDemoApp", "onTokenExpired " + expiredToken);
+            isLoggedIn = false;
         }
 
         @Override
         public void onAccessDenied(VKError authorizationError) {
             Log.d("VkDemoApp", "onAccessDenied " + authorizationError);
+            isLoggedIn = false;
         }
 
     };
+
+    private VKRequest currentRequest;
+
+    private final List<User> users = new ArrayList<User>();
+    private ArrayAdapter<User> listAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -149,9 +100,17 @@ public class MainActivity extends ListActivity {
 
         setContentView(R.layout.main);
 
+        listAdapter = new ArrayAdapter<User>(this, android.R.layout.activity_list_item, users);
+        setListAdapter(listAdapter);
+
+        VKUIHelper.onCreate(this);
+
         VKSdk.initialize(sdkListener, VK_APP_ID);
 
-        if (!VKSdk.isLoggedIn()) {
+        if (VKSdk.wakeUpSession()) {
+            isLoggedIn = true;
+            startLoading();
+        } else {
             final Button loginButton = (Button) findViewById(R.id.login_button);
             loginButton.setVisibility(View.VISIBLE);
             loginButton.setOnClickListener(new View.OnClickListener() {
@@ -180,6 +139,61 @@ public class MainActivity extends ListActivity {
     protected void onDestroy() {
         super.onDestroy();
         VKUIHelper.onDestroy(this);
+        if (currentRequest != null) {
+            currentRequest.cancel();
+        }
+    }
+
+    private void startLoading() {
+        if (currentRequest != null) {
+            currentRequest.cancel();
+        }
+        currentRequest = VKApi.friends().get(VKParameters.from(VKApiConst.FIELDS, "id,first_name,last_name,bdate"));
+        currentRequest.executeWithListener(new VKRequest.VKRequestListener() {
+            @Override
+            public void onComplete(VKResponse response) {
+                super.onComplete(response);
+                Log.d("VkDemoApp", "onComplete " + response);
+
+                VKUsersArray usersArray = (VKUsersArray) response.parsedModel;
+                users.clear();
+                final String[] formats = new String[]{"dd.MM.yyyy", "dd.MM"};
+
+                for (VKApiUserFull userFull : usersArray) {
+                    DateTime birthDate = null;
+                    if (!TextUtils.isEmpty(userFull.bdate)) {
+                        for (int i = 0; i < formats.length; i++) {
+                            try {
+                                birthDate = DateTimeFormat.forPattern(formats[i]).parseDateTime(userFull.bdate);
+                            } catch (Exception ignored) {
+                            }
+                            if (birthDate != null) break;
+                        }
+
+                    }
+                    users.add(new User(userFull.toString(), birthDate));
+                }
+                listAdapter.notifyDataSetChanged();
+            }
+
+            @Override
+            public void attemptFailed(VKRequest request, int attemptNumber, int totalAttempts) {
+                super.attemptFailed(request, attemptNumber, totalAttempts);
+                Log.d("VkDemoApp", "attemptFailed " + request + " " + attemptNumber + " " + totalAttempts);
+            }
+
+            @Override
+            public void onError(VKError error) {
+                super.onError(error);
+                Log.d("VkDemoApp", "onError: " + error);
+            }
+
+            @Override
+            public void onProgress(VKRequest.VKProgressType progressType, long bytesLoaded, long bytesTotal) {
+                super.onProgress(progressType, bytesLoaded, bytesTotal);
+                Log.d("VkDemoApp", "onProgress " + progressType + " " + bytesLoaded + " " + bytesTotal);
+            }
+        });
     }
 
 }
