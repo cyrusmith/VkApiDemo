@@ -1,15 +1,15 @@
 package ru.interosite.vkapidemo;
 
 import android.app.ListActivity;
-import android.content.AsyncTaskLoader;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.TextView;
 
 import com.vk.sdk.VKAccessToken;
 import com.vk.sdk.VKScope;
@@ -22,7 +22,6 @@ import com.vk.sdk.api.VKError;
 import com.vk.sdk.api.VKParameters;
 import com.vk.sdk.api.VKRequest;
 import com.vk.sdk.api.VKResponse;
-import com.vk.sdk.api.model.VKApiUser;
 import com.vk.sdk.api.model.VKApiUserFull;
 import com.vk.sdk.api.model.VKUsersArray;
 
@@ -31,8 +30,6 @@ import org.joda.time.format.DateTimeFormat;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
 
 /**
  * Created by cyrusmith
@@ -89,6 +86,7 @@ public class MainActivity extends ListActivity {
     };
 
     private VKRequest currentRequest;
+    private Button loginButton;
 
     private final List<User> users = new ArrayList<User>();
     private ArrayAdapter<User> listAdapter;
@@ -100,25 +98,47 @@ public class MainActivity extends ListActivity {
 
         setContentView(R.layout.main);
 
-        listAdapter = new ArrayAdapter<User>(this, android.R.layout.activity_list_item, users);
+        listAdapter = new ArrayAdapter<User>(this, android.R.layout.simple_list_item_2, android.R.id.text1, users) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+
+                View view = super.getView(position, convertView, parent);
+                ((TextView) view.findViewById(android.R.id.text1)).setText(getItem(position).getName());
+
+                String birthDateStr = "Не задано";
+
+                final User user = getItem(position);
+
+                DateTime dt = user.getBirthDate();
+
+                if (dt != null) {
+                    birthDateStr = dt.toString(DateTimeFormat.forPattern(user.getDateFormat()));
+                }
+
+                ((TextView) view.findViewById(android.R.id.text2)).setText(birthDateStr);
+                return view;
+
+            }
+        };
         setListAdapter(listAdapter);
+
+        VKSdk.initialize(sdkListener, VK_APP_ID);
 
         VKUIHelper.onCreate(this);
 
-        VKSdk.initialize(sdkListener, VK_APP_ID);
+        loginButton = (Button) findViewById(R.id.login_button);
+        loginButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                VKSdk.authorize(VKScope.FRIENDS, VKScope.PHOTOS);
+            }
+        });
 
         if (VKSdk.wakeUpSession()) {
             isLoggedIn = true;
             startLoading();
         } else {
-            final Button loginButton = (Button) findViewById(R.id.login_button);
             loginButton.setVisibility(View.VISIBLE);
-            loginButton.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    VKSdk.authorize(VKScope.FRIENDS, VKScope.PHOTOS);
-                }
-            });
         }
 
     }
@@ -145,6 +165,7 @@ public class MainActivity extends ListActivity {
     }
 
     private void startLoading() {
+        loginButton.setVisibility(View.GONE);
         if (currentRequest != null) {
             currentRequest.cancel();
         }
@@ -161,17 +182,21 @@ public class MainActivity extends ListActivity {
 
                 for (VKApiUserFull userFull : usersArray) {
                     DateTime birthDate = null;
+                    String format = null;
                     if (!TextUtils.isEmpty(userFull.bdate)) {
                         for (int i = 0; i < formats.length; i++) {
+                            format = formats[i];
                             try {
-                                birthDate = DateTimeFormat.forPattern(formats[i]).parseDateTime(userFull.bdate);
+                                birthDate = DateTimeFormat.forPattern(format).parseDateTime(userFull.bdate);
                             } catch (Exception ignored) {
                             }
-                            if (birthDate != null) break;
+                            if (birthDate != null) {
+                                break;
+                            }
                         }
 
                     }
-                    users.add(new User(userFull.toString(), birthDate));
+                    users.add(new User(userFull.toString(), birthDate, format));
                 }
                 listAdapter.notifyDataSetChanged();
             }
