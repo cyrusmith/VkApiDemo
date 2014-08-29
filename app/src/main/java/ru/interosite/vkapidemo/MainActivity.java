@@ -103,11 +103,12 @@ public class MainActivity extends ListActivity {
             public View getView(int position, View convertView, ViewGroup parent) {
 
                 View view = super.getView(position, convertView, parent);
-                ((TextView) view.findViewById(android.R.id.text1)).setText(getItem(position).getName());
-
-                String birthDateStr = "Не задано";
 
                 final User user = getItem(position);
+
+                ((TextView) view.findViewById(android.R.id.text1)).setText(user.getName());
+
+                String birthDateStr = "Не задано";
 
                 DateTime dt = user.getBirthDate();
 
