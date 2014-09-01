@@ -41,28 +41,23 @@ public class MainActivity extends ListActivity {
 
     private static final String VK_APP_ID = "4520250";
 
-    private boolean isLoggedIn = false;
-
     private final VKSdkListener sdkListener = new VKSdkListener() {
 
         @Override
         public void onAcceptUserToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onAcceptUserToken " + token);
-            isLoggedIn = true;
             startLoading();
         }
 
         @Override
         public void onReceiveNewToken(VKAccessToken newToken) {
             Log.d("VkDemoApp", "onReceiveNewToken " + newToken);
-            isLoggedIn = true;
             startLoading();
         }
 
         @Override
         public void onRenewAccessToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onRenewAccessToken " + token);
-            isLoggedIn = true;
             startLoading();
         }
 
@@ -74,13 +69,11 @@ public class MainActivity extends ListActivity {
         @Override
         public void onTokenExpired(VKAccessToken expiredToken) {
             Log.d("VkDemoApp", "onTokenExpired " + expiredToken);
-            isLoggedIn = false;
         }
 
         @Override
         public void onAccessDenied(VKError authorizationError) {
             Log.d("VkDemoApp", "onAccessDenied " + authorizationError);
-            isLoggedIn = false;
         }
 
     };
@@ -131,12 +124,11 @@ public class MainActivity extends ListActivity {
         loginButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                VKSdk.authorize(VKScope.FRIENDS, VKScope.PHOTOS);
+                VKSdk.authorize(VKScope.FRIENDS);
             }
         });
 
         if (VKSdk.wakeUpSession()) {
-            isLoggedIn = true;
             startLoading();
         } else {
             loginButton.setVisibility(View.VISIBLE);
