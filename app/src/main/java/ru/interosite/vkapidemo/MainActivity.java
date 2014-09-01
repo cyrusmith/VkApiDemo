@@ -1,14 +1,19 @@
 package ru.interosite.vkapidemo;
 
+import android.app.Activity;
 import android.app.ListActivity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.ListFragment;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.TextView;
 
 import com.vk.sdk.VKAccessToken;
@@ -37,32 +42,27 @@ import java.util.List;
  * http://interosite.ru
  * info@interosite.ru
  */
-public class MainActivity extends ListActivity {
+public class MainActivity extends FragmentActivity implements MainUiFragment.Callback {
 
     private static final String VK_APP_ID = "4520250";
-
-    private boolean isLoggedIn = false;
 
     private final VKSdkListener sdkListener = new VKSdkListener() {
 
         @Override
         public void onAcceptUserToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onAcceptUserToken " + token);
-            isLoggedIn = true;
             startLoading();
         }
 
         @Override
         public void onReceiveNewToken(VKAccessToken newToken) {
             Log.d("VkDemoApp", "onReceiveNewToken " + newToken);
-            isLoggedIn = true;
             startLoading();
         }
 
         @Override
         public void onRenewAccessToken(VKAccessToken token) {
             Log.d("VkDemoApp", "onRenewAccessToken " + token);
-            isLoggedIn = true;
             startLoading();
         }
 
@@ -74,22 +74,18 @@ public class MainActivity extends ListActivity {
         @Override
         public void onTokenExpired(VKAccessToken expiredToken) {
             Log.d("VkDemoApp", "onTokenExpired " + expiredToken);
-            isLoggedIn = false;
         }
 
         @Override
         public void onAccessDenied(VKError authorizationError) {
             Log.d("VkDemoApp", "onAccessDenied " + authorizationError);
-            isLoggedIn = false;
         }
 
     };
 
     private VKRequest currentRequest;
-    private Button loginButton;
 
-    private final List<User> users = new ArrayList<User>();
-    private ArrayAdapter<User> listAdapter;
+    private MainUiFragment uiFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,48 +94,15 @@ public class MainActivity extends ListActivity {
 
         setContentView(R.layout.main);
 
-        listAdapter = new ArrayAdapter<User>(this, android.R.layout.simple_list_item_2, android.R.id.text1, users) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-
-                View view = super.getView(position, convertView, parent);
-
-                final User user = getItem(position);
-
-                ((TextView) view.findViewById(android.R.id.text1)).setText(user.getName());
-
-                String birthDateStr = "Не задано";
-
-                DateTime dt = user.getBirthDate();
-
-                if (dt != null) {
-                    birthDateStr = dt.toString(DateTimeFormat.forPattern(user.getDateFormat()));
-                }
-
-                ((TextView) view.findViewById(android.R.id.text2)).setText(birthDateStr);
-                return view;
-
-            }
-        };
-        setListAdapter(listAdapter);
+        uiFragment = (MainUiFragment) getSupportFragmentManager().findFragmentById(R.id.main_fragment);
 
         VKSdk.initialize(sdkListener, VK_APP_ID);
 
         VKUIHelper.onCreate(this);
-
-        loginButton = (Button) findViewById(R.id.login_button);
-        loginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                VKSdk.authorize(VKScope.FRIENDS, VKScope.PHOTOS);
-            }
-        });
-
         if (VKSdk.wakeUpSession()) {
-            isLoggedIn = true;
             startLoading();
         } else {
-            loginButton.setVisibility(View.VISIBLE);
+            uiFragment.setLoginVisible(true);
         }
 
     }
@@ -166,7 +129,7 @@ public class MainActivity extends ListActivity {
     }
 
     private void startLoading() {
-        loginButton.setVisibility(View.GONE);
+        uiFragment.setLoginVisible(false);
         if (currentRequest != null) {
             currentRequest.cancel();
         }
@@ -177,8 +140,9 @@ public class MainActivity extends ListActivity {
                 super.onComplete(response);
                 Log.d("VkDemoApp", "onComplete " + response);
 
+                final List<User> users = new ArrayList<User>();
+
                 VKUsersArray usersArray = (VKUsersArray) response.parsedModel;
-                users.clear();
                 final String[] formats = new String[]{"dd.MM.yyyy", "dd.MM"};
 
                 for (VKApiUserFull userFull : usersArray) {
@@ -199,7 +163,9 @@ public class MainActivity extends ListActivity {
                     }
                     users.add(new User(userFull.toString(), birthDate, format));
                 }
-                listAdapter.notifyDataSetChanged();
+
+                uiFragment.setUsers(users);
+
             }
 
             @Override
@@ -220,6 +186,11 @@ public class MainActivity extends ListActivity {
                 Log.d("VkDemoApp", "onProgress " + progressType + " " + bytesLoaded + " " + bytesTotal);
             }
         });
+    }
+
+    @Override
+    public void onLoginButtonClick() {
+        VKSdk.authorize(VKScope.FRIENDS, VKScope.WALL);
     }
 
 }
